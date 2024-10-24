@@ -16,6 +16,8 @@ ref_file = open(sys.argv[3],'r')
 group_name = sys.argv[2].split('/')[-1].split('.')[-1:]
 group_name = sys.argv[1]
 
+log_file = open(group_name + ".log.txt", "w")
+
 print("[Find Variants] Group Name:", group_name)
 
 line = ref_file.readline()
@@ -67,6 +69,7 @@ for line in variants_file.readlines():
 
 for variant_type in VARIANT_TYPES:
     print("[INFO]", len(Variations[variant_type]), "total", variant_type, "locations")
+    log_file.write("[INFO]" + str(len(Variations[variant_type])) + "total" + variant_type + "locations\n")
 
 ## 2. Analyze reads in SAM file
 print("[Find Variants] Parsing SAM CIGAR tokens for each read")
@@ -83,6 +86,7 @@ for line in sam_file.readlines():
     flag = line[1]
     if (int(flag) & 2048 == 2048):
         print("[Find Variants] Skipping alignment with flag ", flag)
+        log_file.write("[Find Variants] Skipping alignment with flag " + flag + "\n")
         continue
     cigar = line[5]
     seq = line[9]
@@ -93,17 +97,25 @@ for line in sam_file.readlines():
 
     # Generate the ALIGNED SEQUENCE
     align_seq = ""
-    for i in range(0, int(start_pos)):   # if the alignment does not begin at position 0, buffer with N tokens:
-        align_seq += "N"
+    for i in range(0, int(start_pos)):   # if the alignment does not begin at position 0, buffer with - tokens:
+        align_seq += "-"
     cur_num = ""
     pos = 0     # position in read sequence
     ref_pos = start_pos # position in reference sequence. should match with the length of align_seq
     
+    if cigar == "*":
+        print("[Find Variants] Skipping unaligned segment ", name)
+        log_file.write("[Find Variants] Skipping unaligned segment " + name + "\n")
+        continue
+
     for token in cigar:
         if token.isnumeric():
             cur_num += token
             continue
-        num = int(cur_num)
+        try:
+            num = int(cur_num)
+        except:
+            print("CIGAR PARSE ERROR:: UNKNOWN TOKEN:", token)
         new_pos = pos
         if token == "M" or token == "=" or token == "X":
             new_pos = pos + num
@@ -136,7 +148,7 @@ for line in sam_file.readlines():
     while(len(align_seq) < reference_len):
         align_seq += "-"
     if(len(align_seq) != reference_len):
-        print("CRITICAL QUALITY CHECK ERROR:: aligned sequence not length of reference sequence for read", name, cigar, len(align_seq), reference_len)
+        print("CRITICAL QUALITY CHECK FAILED:: aligned sequence not length of reference sequence for read", name, cigar, len(align_seq), reference_len)
         exit()
 
     read_names.append(name)
@@ -186,6 +198,7 @@ for line in sam_file.readlines():
     nreads += 1
 
 print("[INFO]", nreads, "total reads")
+log_file.write("[INFO]" + str(nreads) + "total reads")
 
 
 for variant_type in VARIANT_TYPES:
@@ -209,40 +222,33 @@ for variant_type in VARIANT_TYPES:
                 largeOfile.write(str(token) + "\t")
             largeOfile.write("\n")
 
+
 ## 4. Generate individual read SNP table
-print("[Find Variants] Generating Individual Read SNP tables")
+GENERATE_INDIVIDUAL_TABLE = False
+if GENERATE_INDIVIDUAL_TABLE:
+    print("[Find Variants] Generating Individual Read SNP tables")
 
-individual_reads_dir = group_name + "_Individual_Reads"
-if not os.path.exists(individual_reads_dir):
-    os.mkdir(individual_reads_dir)
+    individual_reads_dir = group_name + "_Individual_Reads"
+    if not os.path.exists(individual_reads_dir):
+        os.mkdir(individual_reads_dir)
 
-for i in range(7, len(read_names)):
-    readname = read_names[i]
-    readfilename = ""
-    for character in readname:
-        if character == "/":
-            readfilename += "_"
-        else:
-            readfilename += character
-    ofile = open(individual_reads_dir + "/" + readfilename + ".AllVariants.SMALLtable.tab", 'w')
+    for i in range(7, len(read_names)):
+        readname = read_names[i]
+        readfilename = ""
+        for character in readname:
+            if character == "/":
+                readfilename += "_"
+            else:
+                readfilename += character
+        ofile = open(individual_reads_dir + "/" + readfilename + ".AllVariants.SMALLtable.tab", 'w')
 
-    for variant_type in VARIANT_TYPES:
-            for location in Variations[variant_type]:
-                for variation in Variations[variant_type][location]:
-                    var = Variations[variant_type][location][variation]
-                    for col in [0, 1, 2, 3, 4]:
-                        ofile.write(str(var[col]) + "\t")
-                    ofile.write(var[i] + '\n')
-    ofile.close()
-            # for token in variants[variant_type][location]:
-            #     largeOfile.write(str(token) + "\t")
-            # largeOfile.write("\n")
+        for variant_type in VARIANT_TYPES:
+                for location in Variations[variant_type]:
+                    for variation in Variations[variant_type][location]:
+                        var = Variations[variant_type][location][variation]
+                        for col in [0, 1, 2, 3, 4]:
+                            ofile.write(str(var[col]) + "\t")
+                        ofile.write(var[i] + '\n')
+        ofile.close()
 
-    # for SNP_location in sortedSNPLocations:
-    #     SNP = variants[SNP_location]
-    #     for col in [0, 1, 2, 3, 4]:
-    #         ofile.write(str(SNP[col]) + "\t")
-    #     ofile.write(SNP[i] + '\n')
-    # ofile.close()
-    
 print("[Find Variants] Wrote all files")
