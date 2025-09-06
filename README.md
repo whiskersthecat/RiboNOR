@@ -1,3 +1,7 @@
+# Note: the work here is being deprecated. For a contemporary repository (though not up to date), please see: https://github.com/whiskersthecat/tandem-repeat-assembly-workflow/tree/main
+
+
+
 # PART A: Generate haplotypes using a large threshold for SNPs (2%)
 
 ### 1. align hifi reads to reference haplotype
